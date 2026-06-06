@@ -71,7 +71,7 @@ struct SearchSheetView: View {
         let request = MKLocalSearch.Request(completion: completion)
         MKLocalSearch(request: request).start { response, _ in
             if let item = response?.mapItems.first {
-                onSelect("", item.placemark.title ?? "")
+                onSelect("", item.name ?? "")
                 dismiss()
             }
         }

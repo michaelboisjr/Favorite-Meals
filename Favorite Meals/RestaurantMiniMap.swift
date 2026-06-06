@@ -5,44 +5,47 @@ struct RestaurantMiniMap: View {
     let restaurantName: String
     let address: String
     @State private var position: MapCameraPosition = .automatic
-    @State private var coordinate: CLLocationCoordinate2D?
+    @State private var markerCoordinate: CLLocationCoordinate2D? // Start as nil
 
     var body: some View {
-        Button(action: openInMaps) {
-            ZStack {
-                if let coordinate = coordinate {
-                    Map(position: .constant(.region(MKCoordinateRegion(center: coordinate, span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01))))) {
-                        Marker(restaurantName, coordinate: coordinate)
-                    }
-                    .frame(height: 150)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .allowsHitTesting(false) // Let the Button handle the tap
-                } else {
-                    ProgressView()
-                        .frame(height: 150)
-                }
+        Map(position: $position) {
+            if let coord = markerCoordinate {
+                Marker(restaurantName, coordinate: coord)
             }
         }
-        .buttonStyle(.plain)
-        .onAppear(perform: geocodeAddress)
+        .frame(height: 150)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .onAppear {
+            geocodeAddress()
+        }
+        .overlay {
+            Button(action: openInMaps) { Color.clear }
+        }
     }
 
     private func geocodeAddress() {
-        let geocoder = CLGeocoder()
-        geocoder.geocodeAddressString(address) { placemarks, _ in
-            if let location = placemarks?.first?.location {
-                self.coordinate = location.coordinate
+        let request = MKLocalSearch.Request()
+        request.naturalLanguageQuery = "\(restaurantName), \(address)"
+        
+        let search = MKLocalSearch(request: request)
+        search.start { response, _ in
+            if let item = response?.mapItems.first {
+                self.markerCoordinate = item.location.coordinate
+                self.position = .item(item) // Center map on the result
             }
         }
     }
 
     private func openInMaps() {
-        let geocoder = CLGeocoder()
-        geocoder.geocodeAddressString(address) { placemarks, _ in
-            guard let placemark = placemarks?.first else { return }
-            let mapItem = MKMapItem(placemark: MKPlacemark(placemark: placemark))
-            mapItem.name = restaurantName
-            mapItem.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving])
+        let request = MKLocalSearch.Request()
+        request.naturalLanguageQuery = "\(restaurantName), \(address)"
+        
+        let search = MKLocalSearch(request: request)
+        search.start { response, _ in
+            guard let item = response?.mapItems.first else { return }
+            item.openInMaps(launchOptions: [
+                MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving
+            ])
         }
     }
 }
