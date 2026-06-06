@@ -73,7 +73,7 @@ struct AddRestaurantView: View {
 
                     // 2. The Result List (Wrapped in a VStack, NOT a Section)
                     if (!viewModel.results.isEmpty && !viewModel.searchText.isEmpty) ||
-                       (!viewModel.addressResults.isEmpty && !viewModel.addressSearchText.isEmpty) {
+                       (!viewModel.addressCompletions.isEmpty && !viewModel.addressSearchText.isEmpty) {
                         VStack(spacing: 0) {
                             // Header
                             HStack {
@@ -108,7 +108,7 @@ struct AddRestaurantView: View {
                                                     }
                                                 // Clear the search results
                                                 viewModel.results = []
-                                                viewModel.addressResults = []
+                                                viewModel.addressCompletions = []
                                                 
                                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                                                     isSelectingResult = false
@@ -128,29 +128,40 @@ struct AddRestaurantView: View {
                                         }
                                     }
                                     // If we have address results, show them
-                                    if !viewModel.addressResults.isEmpty {
-                                        ForEach(viewModel.addressResults, id: \.self) { item in
+                                    if !viewModel.addressCompletions.isEmpty {
+                                        ForEach(viewModel.addressCompletions, id: \.self) { completion in
                                             Button {
+                                                // 1. Mark as selecting so onChange ignores the upcoming text changes
                                                 isSelectingResult = true
-                                                address = item.address?.fullAddress ?? ""
-                                                viewModel.addressSearchText = item.address?.fullAddress ?? ""
-                                                viewModel.results = []
-                                                viewModel.addressResults = []
                                                 
-                                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                                                    isSelectingResult = false
+                                                let request = MKLocalSearch.Request(completion: completion)
+                                                MKLocalSearch(request: request).start { response, _ in
+                                                    if let item = response?.mapItems.first {
+                                                        // 2. Use MainActor to ensure UI updates happen immediately
+                                                        DispatchQueue.main.async {
+                                                            address = item.placemark.title ?? ""
+                                                            viewModel.addressSearchText = ""
+                                                            viewModel.addressCompletions = [] // Clear the list
+                                                            
+                                                            // 3. Clear focus so the next interaction is a fresh start
+                                                            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
+                                                                                            to: nil, from: nil, for: nil)
+                                                            
+                                                            // 4. Delay clearing the flag to ensure all state updates are finished
+                                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                                                isSelectingResult = false
+                                                            }
+                                                        }
+                                                    }
                                                 }
                                             } label: {
                                                 VStack(alignment: .leading) {
-                                                    Text(item.name ?? "Address").font(.headline)
-                                                    Text(item.address?.fullAddress ?? "").font(.caption)
-                                                        .lineLimit(1)
+                                                    Text(completion.title).font(.headline)
+                                                    Text(completion.subtitle).font(.caption)
                                                 }
-                                                .padding()
+                                                .padding(.horizontal)
                                                 .frame(maxWidth: .infinity, alignment: .leading)
                                             }
-                                            .background(Theme.Colors.fields.opacity(0.7))
-                                            Divider()
                                         }
                                     }
                                 }
