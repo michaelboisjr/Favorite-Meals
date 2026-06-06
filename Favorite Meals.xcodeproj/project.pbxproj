@@ -150,6 +150,9 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Favorite Meals/Info.plist";
+				INFOPLIST_KEY_NSCameraUsageDescription = "To save your meal photos";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Needed to locate places to eat nearby.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "To save your meal photos";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -184,6 +187,9 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Favorite Meals/Info.plist";
+				INFOPLIST_KEY_NSCameraUsageDescription = "To save your meal photos";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Needed to locate places to eat nearby.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "To save your meal photos";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

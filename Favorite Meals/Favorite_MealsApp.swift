@@ -11,10 +11,12 @@ import SwiftData
 @main
 struct Favorite_MealsApp: App {
     var sharedModelContainer: ModelContainer = {
+        // 1. Include ALL your models here
         let schema = Schema([
-            Item.self,
+            Meal.self,
+            Restaurant.self,
         ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false, cloudKitDatabase: .automatic)
 
         do {
             return try ModelContainer(for: schema, configurations: [modelConfiguration])
@@ -25,7 +27,8 @@ struct Favorite_MealsApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            DashboardView()
+                .background(Theme.Colors.background)
         }
         .modelContainer(sharedModelContainer)
     }
