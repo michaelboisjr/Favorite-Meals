@@ -35,6 +35,10 @@ struct MealDetailView: View {
                 Section("Restaurant") {
                     Text(restaurant.name).font(.headline)
                     Text(restaurant.address).font(.subheadline)
+                    
+                    // Add the map here
+                    RestaurantMiniMap(restaurantName: restaurant.name, address: restaurant.address)
+                        .padding(.top, 5)
                 }
                 .withListRow()
             }

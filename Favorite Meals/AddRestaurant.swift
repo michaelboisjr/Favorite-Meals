@@ -223,8 +223,3 @@ struct AddRestaurantView: View {
         .withAppBackground()
     }  // 👈 This is the end of View
 }  // 👈 This is the end of Struct
-
-#Preview {
-    DashboardView()
-        .modelContainer(for: Item.self, inMemory: true)
-}
