@@ -124,8 +124,6 @@ struct AddMealView: View {
                             meal.rating = rating
                             meal.notes = notes
                             meal.restaurant = selectedRestaurant
-                            // Sync the denormalized field
-                            meal.restaurantName = selectedRestaurant?.name ?? "No Restaurant"
                             meal.imageData = mealImageData
                         } else {
                             // Create new object
@@ -135,7 +133,6 @@ struct AddMealView: View {
                                 notes: notes
                             )
                             newMeal.restaurant = selectedRestaurant
-                            newMeal.restaurantName = selectedRestaurant?.name ?? "No Restaurant"
                             newMeal.imageData = mealImageData
                             modelContext.insert(newMeal)
                         }

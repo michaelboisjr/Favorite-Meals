@@ -7,10 +7,9 @@ final class Restaurant {
     var address: String = ""
     var logoData: Data?
     
-    // Change the relationship to be optional by default
+    // Always keep as a non-optional array
     @Relationship(deleteRule: .cascade, inverse: \Meal.restaurant)
     var meals: [Meal]? = nil // Changed from [Meal] = [] to [Meal]? = nil
-    
     init(name: String, address: String) {
         self.name = name
         self.address = address
@@ -24,14 +23,19 @@ final class Meal {
     var notes: String = ""
     var imageData: Data?
     
-    // Ensure the inverse relationship is also optional
-    var restaurant: Restaurant? = nil
+    var restaurant: Restaurant?
     
-    var restaurantName: String = "No Restaurant"
+    // Computed property avoids data synchronization bugs
+    @Transient
+    var restaurantName: String {
+        restaurant?.name ?? "No Restaurant"
+    }
     
-    init(name: String, rating: Int, notes: String) {
+    // Updated initializer to include the relationship
+    init(name: String, rating: Int, notes: String, restaurant: Restaurant? = nil) {
         self.name = name
         self.rating = rating
         self.notes = notes
+        self.restaurant = restaurant
     }
 }
