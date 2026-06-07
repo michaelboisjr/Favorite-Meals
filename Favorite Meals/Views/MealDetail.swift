@@ -6,57 +6,66 @@ struct MealDetailView: View {
     @State private var showingEditSheet = false
 
     var body: some View {
-        Form {
-            Section {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                // 1. Hero Image Header
                 if let data = meal.imageData, let uiImage = UIImage(data: data) {
                     Image(uiImage: uiImage)
                         .resizable()
-                        .scaledToFit()
-                        .frame(maxWidth: .infinity)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                        .padding(.vertical, 5) // Adds breathing room
-                } else {
-                    // Optional: Show a placeholder if no image exists
-                    ContentUnavailableView("No Photo", systemImage: "photo", description: Text("Add a photo in edit mode."))
-                        .foregroundStyle(.secondary)
+                        .aspectRatio(contentMode: .fill)
+                        .frame(height: 300)
+                        .clipped()
+                        .overlay(LinearGradient(colors: [.clear, .black.opacity(0.4)], startPoint: .top, endPoint: .bottom))
                 }
-            }
-            .withListRow()
-            
-            Section("Details") {
-                            // Use Text to display data, not TextField
-                            LabeledContent("Name", value: meal.name)
-                            LabeledContent("Rating", value: "\(meal.rating)")
-                            LabeledContent("Notes", value: meal.notes)
-                        }
-            .withListRow()
-            
-            if let restaurant = meal.restaurant {
-                Section("Restaurant") {
-                    Text(restaurant.name).font(.headline)
-                    Text(restaurant.address).font(.subheadline)
+
+                VStack(alignment: .leading, spacing: 20) {
+                    // 2. Title & Rating Section
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(meal.name)
+                            .font(.system(.largeTitle, design: .rounded, weight: .bold))
+                        StarRatingView(rating: meal.rating)
+                    }
+
+                    // 3. Info Cards
+                    InfoCard(title: "Restaurant", content: meal.restaurant?.name ?? "Unknown")
                     
-                    // Add the map here
-                    RestaurantMiniMap(restaurantName: restaurant.name, address: restaurant.address)
-                        .padding(.top, 5)
+                    if let restaurant = meal.restaurant {
+                        RestaurantMiniMap(restaurantName: restaurant.name, address: restaurant.address)
+                    }
+
+                    InfoCard(title: "Notes", content: meal.notes.isEmpty ? "No notes added." : meal.notes)
                 }
-                .withListRow()
+                .padding()
             }
-            
         }
         .withAppBackground()
-
-        .navigationTitle(meal.name)
-        .navigationBarTitleDisplayMode(.inline)
+        .ignoresSafeArea(edges: .top) // Extends image into the nav bar
         .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("Edit") {
-                            showingEditSheet = true
-                        }
-                    }
-                }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Edit") { showingEditSheet = true }
+                    .buttonStyle(.borderedProminent)
+                    .clipShape(Capsule())
+            }
+        }
         .sheet(isPresented: $showingEditSheet) {
-                    AddMealView(mealToEdit: meal)
-                }
+            AddMealView(mealToEdit: meal)
+        }
+    }
+}
+
+// Reusable clean info card
+struct InfoCard: View {
+    let title: String
+    let content: String
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title).font(.subheadline).bold().foregroundStyle(.secondary)
+            Text(content).font(.body).fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(Theme.Colors.fields)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 }
