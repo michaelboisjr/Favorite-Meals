@@ -57,7 +57,7 @@ struct DashboardView: View {
                         ])
                         
                         Text("Restaurant").tag([
-                            SortDescriptor(\Meal.restaurantName),
+                            SortDescriptor(\Meal.restaurant?.name),
                             SortDescriptor(\Meal.name) // This ensures meals within the same restaurant are alphabetical
                         ])
                     }
@@ -67,12 +67,13 @@ struct DashboardView: View {
                     Button(action: { showOptions = true }) {
                         Image(systemName: "plus.circle.fill").font(.title2)
                     }
+                    .confirmationDialog("Add New", isPresented: $showOptions) {
+                        Button("Add Meal") { showingAddMeal = true }
+                        Button("Add Restaurant") { showingAddRestaurant = true }
+                    }
                 }
             }// 👈 This is the closing bracket of .toolbar
-            .confirmationDialog("Add New", isPresented: $showOptions) {
-                Button("Add Meal") { showingAddMeal = true }
-                Button("Add Restaurant") { showingAddRestaurant = true }
-            }
+
             .sheet(isPresented: $showingAddMeal) { AddMealView() }
             .sheet(isPresented: $showingAddRestaurant) {
                 AddRestaurantView(onSave: { _ in })
