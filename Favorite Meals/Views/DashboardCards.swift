@@ -1,7 +1,7 @@
 import SwiftUI
 import SwiftData
 
-//Star rating setup
+// MARK: - Star Rating View
 struct StarRatingView: View {
     let rating: Int
     
@@ -18,7 +18,7 @@ struct StarRatingView: View {
     }
 }
 
-//Featured Meal Card
+// MARK: - Featured Meal Card
 struct FeaturedCardView: View {
     let meal: Meal
     
@@ -30,17 +30,25 @@ struct FeaturedCardView: View {
                     .resizable()
                     .scaledToFill()
                     .frame(height: 200)
+                    .frame(maxWidth: .infinity)
                     .clipped()
             } else {
-                Rectangle().fill(Theme.Colors.fields).frame(height: 200)
+                Rectangle()
+                    .fill(Theme.Colors.fields)
+                    .frame(height: 200)
             }
             
-            // Text Overlay
+            // Text Overlay Gradient
             LinearGradient(colors: [.black.opacity(0.8), .clear], startPoint: .bottom, endPoint: .top)
             
             VStack(alignment: .leading, spacing: 4) {
-                Text(meal.name).font(.title2).bold().foregroundStyle(.white)
-                Text(meal.restaurant?.name ?? "").font(.subheadline).foregroundStyle(.white.opacity(0.8))
+                Text(meal.name)
+                    .font(.title2)
+                    .bold()
+                    .foregroundStyle(.white)
+                Text(meal.restaurant?.name ?? "")
+                    .font(.subheadline)
+                    .foregroundStyle(.white.opacity(0.8))
             }
             .padding()
         }
@@ -48,7 +56,7 @@ struct FeaturedCardView: View {
     }
 }
 
-//Standard Meal Card
+// MARK: - Standard Meal Card
 struct MealCardView: View {
     let meal: Meal
     
@@ -64,7 +72,6 @@ struct MealCardView: View {
                         .frame(maxWidth: .infinity)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                 } else {
-                    // Refined Placeholder UI
                     RoundedRectangle(cornerRadius: 12)
                         .fill(Theme.Colors.fields)
                         .frame(height: 120)
@@ -81,6 +88,7 @@ struct MealCardView: View {
                 Text(meal.name)
                     .font(.headline)
                     .lineLimit(1)
+                    .foregroundStyle(.primary) // Override NavigationLink accent color
                 
                 Text(meal.restaurant?.name ?? "No Restaurant")
                     .font(.caption)
@@ -98,28 +106,28 @@ struct MealCardView: View {
     }
 }
 
-//Grid layout for sorted meals
+// MARK: - Grid Layout for Sorted Meals
 struct MealListView: View {
     @Query private var meals: [Meal]
+    
     // Responsive grid: 2 columns
     let columns = [GridItem(.flexible()), GridItem(.flexible())]
     
     init(sortOrder: [SortDescriptor<Meal>]) {
-        // The _meals property wrapper allows us to dynamically inject the sort order
+        // Dynamically inject the sort descriptor configuration array
         _meals = Query(sort: sortOrder)
     }
     
     var body: some View {
-        ScrollView {
-            LazyVGrid(columns: columns, spacing: 16) {
-                ForEach(meals) { meal in
-                    NavigationLink(destination: MealDetailView(meal: meal)) {
-                        MealCardView(meal: meal)
-                    }
-                    .buttonStyle(ScalableButtonStyle()) // Apply here as well
+        // FIX: ScrollView wrapper removed so it leverages DashboardView's scroll hierarchy
+        LazyVGrid(columns: columns, spacing: 16) {
+            ForEach(meals) { meal in
+                NavigationLink(destination: MealDetailView(meal: meal)) {
+                    MealCardView(meal: meal)
                 }
+                .buttonStyle(ScalableButtonStyle())
             }
-            .padding()
         }
+        .padding(.horizontal)
     }
 }

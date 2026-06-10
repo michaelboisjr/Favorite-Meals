@@ -12,9 +12,8 @@ struct AddRestaurantView: View {
 
     @State private var viewModel = RestaurantSearchViewModel()
     @State private var isSelectingResult = false
-    // Optional: Pass an existing restaurant to edit
+    
     var restaurantToEdit: Restaurant?
-    // Callback to pass the selected restaurant back
     var onSave: (Restaurant) -> Void
 
     // Restaurant State
@@ -44,7 +43,7 @@ struct AddRestaurantView: View {
                     // 1. Name Field
                     ZStack(alignment: .leading) {
                         TextField("Restaurant Name", text: $name)
-                            .disabled(true)  // Disable typing, we want to force the search
+                            .disabled(true)  // Force the search sheet interaction
 
                         Button("") { showNameSearch = true }
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -59,14 +58,12 @@ struct AddRestaurantView: View {
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
 
-                }  // 👈 This is the end of Section Restaurant Details
+                }
                 .withListRow()
 
                 Section("Logo") {
                     PhotosPicker(selection: $logoItem, matching: .images) {
-                        if let data = logoData,
-                            let uiImage = UIImage(data: data)
-                        {
+                        if let data = logoData, let uiImage = UIImage(data: data) {
                             Image(uiImage: uiImage)
                                 .resizable()
                                 .scaledToFit()
@@ -75,10 +72,10 @@ struct AddRestaurantView: View {
                         } else {
                             Label("Select Logo", systemImage: "photo")
                         }
-                    }  // 👈 This is the end of PhotosPicker
-                }  // 👈 This is the end of Logo section
+                    }
+                }
                 .withListRow()
-            }  // 👈 This is the end of Form
+            }
             .navigationTitle(
                 restaurantToEdit == nil ? "New Restaurant" : "Edit Restaurant"
             )
@@ -87,14 +84,15 @@ struct AddRestaurantView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         if let restaurant = restaurantToEdit {
+                            // Update Existing
                             restaurant.name = name
                             restaurant.address = address
+                            restaurant.logoData = logoData // FIX: Persist updated data
                             onSave(restaurant)
                         } else {
-                            let newRestaurant = Restaurant(
-                                name: name,
-                                address: address
-                            )
+                            // Create New
+                            let newRestaurant = Restaurant(name: name, address: address)
+                            newRestaurant.logoData = logoData // FIX: Persist brand data
                             modelContext.insert(newRestaurant)
                             onSave(newRestaurant)
                         }
@@ -105,46 +103,33 @@ struct AddRestaurantView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
-            }  // 👈 This is the end of .toolbar
-            // Logo Optimization (reuse the resizing logic)
-            .onChange(of: logoItem) {
+            }
+            .onChange(of: logoItem) { _, _ in
                 Task {
-                    guard
-                        let data = try? await logoItem?.loadTransferable(
-                            type: Data.self
-                        ),
-                        let uiImage = UIImage(data: data)
-                    else { return }
+                    guard let data = try? await logoItem?.loadTransferable(type: Data.self),
+                          let uiImage = UIImage(data: data) else { return }
 
-                    // Logos are typically small, so 400px width is sufficient
+                    // Process and compress using your custom extension
                     if let resized = uiImage.resized(toWidth: 400),
-                        let compressed = resized.jpegData(
-                            compressionQuality: 0.7
-                        )
-                    {
-                        await MainActor.run { self.logoData = compressed }
+                       let compressed = resized.jpegData(compressionQuality: 0.7) {
+                        await MainActor.run {
+                            self.logoData = compressed
+                        }
                     }
                 }
-            }  // 👈 This is the end of .onChange
-
+            }
             .sheet(isPresented: $showNameSearch) {
-                SearchSheetView(viewModel: viewModel, isAddressSearch: false) {
-                    nameResult,
-                    addressResult in
+                SearchSheetView(viewModel: viewModel, isAddressSearch: false) { nameResult, addressResult in
                     self.name = nameResult
                     self.address = addressResult
                 }
             }
             .sheet(isPresented: $showAddressSearch) {
-                SearchSheetView(viewModel: viewModel, isAddressSearch: true) {
-                    _,
-                    addressResult in
+                SearchSheetView(viewModel: viewModel, isAddressSearch: true) { _, addressResult in
                     self.address = addressResult
                 }
             }
-
-            //End of options for Form
-        }  // 👈 This is the end of Navigation stack
+        }
         .withAppBackground()
-    }  // 👈 This is the end of View
-}  // 👈 This is the end of Struct
+    }
+}
