@@ -1,8 +1,10 @@
 import SwiftUI
 import SwiftData
 import CoreData
+import CloudKit
 
 /// Coordinates the synchronized storage layer between Core Data (for CloudKit Zone Shares) and SwiftData
+@MainActor
 class CloudDataCoordinator {
     static let shared = CloudDataCoordinator()
     
@@ -10,48 +12,75 @@ class CloudDataCoordinator {
     let modelContainer: ModelContainer
     
     private init() {
-        // 1. Define your SwiftData schema details
         let schema = Schema([Meal.self, Restaurant.self])
         
-        // 2. Generate a valid Core Data Managed Object Model directly from your SwiftData types
+        // 1. Create a pristine model instance from SwiftData definitions
         guard let managedObjectModel = NSManagedObjectModel.makeManagedObjectModel(for: [Meal.self, Restaurant.self]) else {
-            fatalError("Failed to compile a Core Data NSManagedObjectModel from SwiftData classes.")
+            fatalError("Failed to compile Model.")
         }
         
-        // 3. Initialize the Core Data container passing the generated runtime model structure
-        let container = NSPersistentCloudKitContainer(name: "FavoriteMeals", managedObjectModel: managedObjectModel)
-        
-        // 4. FIX: Use standard Application Support Directory to establish the SQLite storage path
         let defaultURL = URL.applicationSupportDirectory.appending(path: "default.store")
-        let description = NSPersistentStoreDescription(url: defaultURL)
+        let sharedURL = URL.applicationSupportDirectory.appending(path: "shared.store")
         
-        // 5. Explicitly bind the Core Data configuration to use CloudKit
-        description.cloudKitContainerOptions = NSPersistentCloudKitContainerOptions(
-            containerIdentifier: "iCloud.FavoriteMealData" // Replace with your real container string
-        )
+        // 2. Configure Core Data Private Store Descriptions
+        let privateDescription = NSPersistentStoreDescription(url: defaultURL)
+        privateDescription.configuration = "Default"
+        privateDescription.cloudKitContainerOptions = NSPersistentCloudKitContainerOptions(containerIdentifier: "iCloud.FavoriteMealData")
+        privateDescription.cloudKitContainerOptions?.databaseScope = .private
+        privateDescription.setOption(true as NSNumber, forKey: NSPersistentHistoryTrackingKey)
+        privateDescription.setOption(true as NSNumber, forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)
         
-        // Requirements for history tracking and remote change notifications
-        description.setOption(true as NSNumber, forKey: NSPersistentHistoryTrackingKey)
-        description.setOption(true as NSNumber, forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)
+        // 3. Configure Core Data Shared Store Descriptions
+        let sharedDescription = NSPersistentStoreDescription(url: sharedURL)
+        sharedDescription.configuration = "PF_CloudKitShare"
+        sharedDescription.cloudKitContainerOptions = NSPersistentCloudKitContainerOptions(containerIdentifier: "iCloud.FavoriteMealData")
+        sharedDescription.cloudKitContainerOptions?.databaseScope = .shared
+        sharedDescription.setOption(true as NSNumber, forKey: NSPersistentHistoryTrackingKey)
+        sharedDescription.setOption(true as NSNumber, forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)
         
-        // Assign the manually configured store configurations array back to the container
-        container.persistentStoreDescriptions = [description]
+        // 4. Fire up the Core Data stack first
+        let container = NSPersistentCloudKitContainer(name: "FavoriteMeals", managedObjectModel: managedObjectModel)
+        container.persistentStoreDescriptions = [privateDescription, sharedDescription]
         
         container.loadPersistentStores { _, error in
             if let error = error as NSError? {
-                fatalError("Unresolved core data stack initialization error: \(error), \(error.userInfo)")
+                print("❌ Core Data store load failed: \(error.localizedDescription)")
             }
         }
-        
         self.persistentContainer = container
         
-        // 6. Mount SwiftData directly to the exact same file url initialized by Core Data
+        // 5. Mount SwiftData locally to the exact same file path
+        // CRITICAL: We DO NOT pass CloudKit options to this ModelConfiguration.
+        // Core Data is handling the cloud sync; SwiftData is just an elegant window to the local database file.
         let modelConfiguration = ModelConfiguration(schema: schema, url: defaultURL)
         
         do {
             self.modelContainer = try ModelContainer(for: schema, configurations: [modelConfiguration])
         } catch {
-            fatalError("Could not attach SwiftData layer onto the database storage: \(error)")
+            fatalError("Could not attach SwiftData: \(error)")
+        }
+    }
+}
+
+class AppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication, userActivityWillSave userActivity: NSUserActivity) {}
+    
+    // This is the magic hook iOS calls when a user opens an iCloud share link
+    func application(_ application: UIApplication, userDidAcceptCloudKitShareWith metadata: CKShare.Metadata) {
+        Task {
+            let container = CKContainer(identifier: metadata.containerIdentifier)
+            let acceptOperation = CKAcceptSharesOperation(shareMetadatas: [metadata])
+            
+            acceptOperation.acceptSharesResultBlock = { result in
+                switch result {
+                case .success:
+                    print("✅ Successfully accepted and attached friend's shared meal feed!")
+                case .failure(let error):
+                    print("❌ Failed to accept CloudKit share: \(error.localizedDescription)")
+                }
+            }
+            
+            container.add(acceptOperation)
         }
     }
 }
@@ -60,6 +89,7 @@ class CloudDataCoordinator {
 @main
 struct Favorite_MealsApp: App {
     // Reference our unified data engine coordinator
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     let coordinator = CloudDataCoordinator.shared
     
     init() {
@@ -83,9 +113,11 @@ struct Favorite_MealsApp: App {
         guard (try? context.fetchCount(descriptor)) == 0 else { return }
         
         guard let uiImage1 = UIImage(named: "Default-meal1"),
-              let imageData1 = uiImage1.jpegData(compressionQuality: 0.8),
+              let resizedImage1 = uiImage1.resized(toWidth: 800),
+              let imageData1 = resizedImage1.jpegData(compressionQuality: 0.8),
               let uiImage2 = UIImage(named: "Default-meal2"),
-              let imageData2 = uiImage2.jpegData(compressionQuality: 0.8) else {
+              let resizedImage2 = uiImage2.resized(toWidth: 800),
+              let imageData2 = resizedImage2.jpegData(compressionQuality: 0.8) else {
             return
         }
         
@@ -105,6 +137,11 @@ struct Favorite_MealsApp: App {
         context.insert(meal1)
         context.insert(meal2)
         
-        try? context.save()
+        do {
+            try context.save() // 👈 Force SwiftData to write to the physical file immediately
+            print("✅ Seed data successfully written to disk.")
+        } catch {
+            print("❌ Failed to save seed data: \(error)")
+        }
     }
 }

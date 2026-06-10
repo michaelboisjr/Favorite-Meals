@@ -14,7 +14,7 @@ struct DashboardView: View {
     // State for sorting
     @State private var sortOrder: [SortDescriptor<Meal>] = [SortDescriptor(\Meal.name)]
     
-    // 2. Share state tracking variables
+    // Share state tracking variables
     @State private var activeShare: CKShare?
     @State private var activeContainer: CKContainer?
     @State private var isShowingShareSheet = false
@@ -81,7 +81,6 @@ struct DashboardView: View {
                         Button("Add Meal") { showingAddMeal = true }
                         Button("Add Restaurant") { showingAddRestaurant = true }
                         
-                        // FIX: Dialogue buttons must be simple string titles
                         Button("Share Feed with Friends") {
                             initiateFeedShare()
                         }
@@ -100,17 +99,22 @@ struct DashboardView: View {
                 AddRestaurantView(onSave: { _ in })
             }
         }
-    } // 👈 Closing bracket of 'some View'
+    }
     
-    // FIX: This sharing logic has been moved inside the struct boundary scope
     /// Collects the target data payload and requests a secure invitation link
     private func initiateFeedShare() {
         guard let primaryMealToShare = meals.first else { return }
         
         isLoadingShare = true
         
+        do {
+            try modelContext.save()
+            print("✅ SwiftData successfully flushed context to disk.")
+        } catch {
+            print("⚠️ SwiftData pre-save failed: \(error.localizedDescription)")
+        }
+        
         Task {
-            // Fetch structural data container details from our shared state system
             let coordinator = CloudDataCoordinator.shared
             
             let manager = CloudKitShareManager(
@@ -121,15 +125,20 @@ struct DashboardView: View {
             do {
                 let (share, container) = try await manager.getOrCreateShare(for: primaryMealToShare)
                 
-                self.activeShare = share
-                self.activeContainer = container
-                self.isShowingShareSheet = true
+                // 🔥 FIX: Explicitly route UI-bound state updates back to the Main Actor context
+                await MainActor.run {
+                    self.activeShare = share
+                    self.activeContainer = container
+                    self.isShowingShareSheet = true
+                    self.isLoadingShare = false
+                    print("✅ Share record locked down. Presenting UICloudSharingController presentation sheet.")
+                }
             } catch {
+                await MainActor.run {
+                    self.isLoadingShare = false
+                }
                 print("❌ Failed to initiate sharing loop from toolbar: \(error)")
             }
-            
-            isLoadingShare = false
         }
     }
-
-} // 👈 Closing bracket of 'DashboardView' struct
+}
