@@ -7,14 +7,17 @@ final class Restaurant {
     var address: String = ""
     var logoData: Data?
     
-    // Always keep as a non-optional array
+    // Kept as an optional array for CloudKit zone synchronization compatibility
     @Relationship(deleteRule: .cascade, inverse: \Meal.restaurant)
-    var meals: [Meal]? = nil // Changed from [Meal] = [] to [Meal]? = nil
+    var meals: [Meal]? = []
+    
     init(name: String, address: String) {
         self.name = name
         self.address = address
+        self.meals = [] // FIX: Default to an empty array so CloudKit can append matching children records
     }
 }
+
 
 @Model
 final class Meal {
