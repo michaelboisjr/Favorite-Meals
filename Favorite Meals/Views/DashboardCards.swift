@@ -108,26 +108,52 @@ struct MealCardView: View {
 
 // MARK: - Grid Layout for Sorted Meals
 struct MealListView: View {
+    @Environment(\.modelContext) private var modelContext // 👈 Add context
     @Query private var meals: [Meal]
     
-    // Responsive grid: 2 columns
     let columns = [GridItem(.flexible()), GridItem(.flexible())]
     
     init(sortOrder: [SortDescriptor<Meal>]) {
-        // Dynamically inject the sort descriptor configuration array
         _meals = Query(sort: sortOrder)
     }
     
     var body: some View {
-        // FIX: ScrollView wrapper removed so it leverages DashboardView's scroll hierarchy
         LazyVGrid(columns: columns, spacing: 16) {
             ForEach(meals) { meal in
                 NavigationLink(destination: MealDetailView(meal: meal)) {
                     MealCardView(meal: meal)
                 }
                 .buttonStyle(ScalableButtonStyle())
+                // ⬇️ ADD THE CONTEXT MENU HERE
+                .contextMenu {
+                    Button(role: .destructive) {
+                        deleteMeal(meal)
+                    } label: {
+                        Label("Delete Meal", systemImage: "trash")
+                    }
+                }
             }
         }
         .padding(.horizontal)
+    }
+    
+    // ⬇️ ADD THE DELETION LOGIC
+    private func deleteMeal(_ meal: Meal) {
+        // Capture the restaurant reference before deleting the meal
+        let associatedRestaurant = meal.restaurant
+        
+        // Remove the meal from disk storage
+        modelContext.delete(meal)
+        
+        // Optional Cleanup: If the restaurant now has zero meals left, delete it too
+        if let restaurant = associatedRestaurant {
+            // Check if this was the last meal for this restaurant
+            if (restaurant.meals?.count ?? 0) <= 1 {
+                modelContext.delete(restaurant)
+            }
+        }
+        
+        // Save the changes explicitly (or let SwiftData auto-save handle it)
+        try? modelContext.save()
     }
 }

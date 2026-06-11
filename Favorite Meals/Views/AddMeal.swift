@@ -116,6 +116,38 @@ struct AddMealView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
+                
+                
+                
+                // ⬇️ ADD THIS NEW TOOLBAR ITEM
+                    if mealToEdit != nil {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button(role: .destructive) {
+                                if let meal = mealToEdit {
+                                    let associatedRestaurant = meal.restaurant
+                                    modelContext.delete(meal)
+                                    
+                                    // Clean up empty restaurants if necessary
+                                    if let restaurant = associatedRestaurant, (restaurant.meals?.count ?? 0) <= 1 {
+                                        modelContext.delete(restaurant)
+                                    }
+                                    
+                                    dismiss()
+                                }
+                            } label: {
+                                Image(systemName: "trash")
+                                    .foregroundStyle(.red)
+                            }
+                        }
+                    }
+                
+                
+                
+                
+                
+                
+                
+                
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         if let meal = mealToEdit {
