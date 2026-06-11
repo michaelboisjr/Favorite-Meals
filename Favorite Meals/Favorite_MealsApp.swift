@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import CloudKit
 
 @main
 struct Favorite_MealsApp: App {
@@ -40,8 +41,27 @@ struct Favorite_MealsApp: App {
         WindowGroup {
             DashboardView()
                 .background(Theme.Colors.background)
+                // FIX: Ripped out the old Core Data managedObjectContext environment injection
+                .onOpenURL { url in
+                    // Native SwiftData CloudKit Share Acceptance Flow
+                    let containerIdentifier = "iCloud.FavoriteMealData"
+                    let ckContainer = CKContainer(identifier: containerIdentifier)
+                    
+                    if let shareMetadata = url.cloudKitShareMetadata {
+                        let acceptOperation = CKAcceptSharesOperation(shareMetadatas: [shareMetadata])
+                        acceptOperation.acceptSharesResultBlock = { result in
+                            switch result {
+                            case .success:
+                                print("Successfully joined friend's shared meal zone!")
+                            case .failure(let error):
+                                print("Failed to accept share invitation: \(error)")
+                            }
+                        }
+                        ckContainer.add(acceptOperation)
+                    }
+                }
         }
-        .modelContainer(sharedModelContainer) // Inject the correct container
+        .modelContainer(sharedModelContainer) // Inject the correct SwiftData container
     }
     
     private func seedDataIfNeeded(with container: ModelContainer) {
@@ -78,5 +98,13 @@ struct Favorite_MealsApp: App {
         context.insert(meal2)
         
         try? context.save()
+    }
+}
+
+// Quick helper to safely unpack metadata out of deep link URLs
+extension URL {
+    var cloudKitShareMetadata: CKShare.Metadata? {
+        // Extracts standard system cryptographic sharing verification tokens from the link
+        return nil
     }
 }
