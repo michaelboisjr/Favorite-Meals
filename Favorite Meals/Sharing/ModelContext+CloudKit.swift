@@ -4,43 +4,55 @@ import CloudKit
 import CoreData
 
 extension ModelContext {
-    /// Retrieves an existing CKShare or creates a new one for a specific SwiftData model instance
+    /// Retrieves an existing CKShare or creates and registers a new one on the server
     @MainActor
     func fetchOrCreateShare(for model: any PersistentModel) async throws -> (CKShare, CKContainer) {
-        // 1. Establish connection to your targeted iCloud Container
         let containerIdentifier = "iCloud.FavoriteMealData"
         let cloudKitContainer = CKContainer(identifier: containerIdentifier)
         
-        // 2. Fetch the native persistent CloudKit container directly via the ModelContainer configurations
-        // This avoids tapping into private persistentStoreCoordinator properties
-        guard let persistentContainer = self.container.configurations.first else {
-            throw NSError(domain: "SwiftDataShareError", code: 500, userInfo: [NSLocalizedDescriptionKey: "Unable to resolve ModelConfiguration container settings."])
+        guard let _ = self.container.configurations.first else {
+            throw NSError(domain: "SwiftDataShareError", code: 500, userInfo: [NSLocalizedDescriptionKey: "Unable to resolve ModelConfiguration settings."])
         }
         
-        // 3. Define the dedicated Core Data CloudKit Zone ID where shared objects live
         let zoneID = CKRecordZone.ID(zoneName: "com.apple.coredata.cloudkit.zone", ownerName: CKCurrentUserDefaultName)
-        
-        // 4. Try fetching an existing share relationship bundle from the private CloudKit Database
         let privateDatabase = cloudKitContainer.privateCloudDatabase
+        let shareRecordID = CKRecord.ID(recordName: "cloudKitShare", zoneID: zoneID)
         
+        // 1. Try to fetch an existing share from the server
         do {
-            // FIX: Replaced CKRecord.Name.zoneShare with the correct literal system key string
-            let shareRecordID = CKRecord.ID(recordName: "cloudKitShare", zoneID: zoneID)
             let existingShareRecord = try await privateDatabase.record(for: shareRecordID)
-            
             if let existingShare = existingShareRecord as? CKShare {
+                print("Found existing cloud share on server! 🎉")
                 return (existingShare, cloudKitContainer)
             }
         } catch {
-            // Error code 11 is CKError.unknownItem (Zone/Share doesn't exist yet on iCloud), which is expected on first run.
-            print("No existing cloud share zone found, initializing a fresh one...")
+            print("No existing cloud share zone on server. Creating and registering a new one...")
         }
         
-        // 5. Fallback: Initialize a brand new native CKShare instance
+        // 2. If it doesn't exist, build the new CKShare locally
         let newShare = CKShare(recordZoneID: zoneID)
         newShare[CKShare.SystemFieldKey.title] = "Shared Favorite Restaurant Details" as CKRecordValue
         newShare[CKShare.SystemFieldKey.shareType] = "com.apple.FavoriteMeals.mealShare" as CKRecordValue
         
-        return (newShare, cloudKitContainer)
+        // 3. CRITICAL FIX: Explicitly save the new Share record to the CloudKit Server
+        // We use a modify operation to push the record up immediately
+        let operation = CKModifyRecordsOperation(recordsToSave: [newShare], recordIDsToDelete: nil)
+        operation.savePolicy = .changedKeys
+        operation.qualityOfService = .userInitiated
+        
+        return try await withCheckedThrowingContinuation { continuation in
+            operation.modifyRecordsResultBlock = { result in
+                switch result {
+                case .success:
+                    print("Successfully saved new CKShare record to iCloud servers! 🚀")
+                    continuation.resume(returning: (newShare, cloudKitContainer))
+                case .failure(let error):
+                    print("Failed to save CKShare to server: \(error.localizedDescription)")
+                    continuation.resume(throwing: error)
+                }
+            }
+            // Execute the push to Apple's sandbox servers
+            privateDatabase.add(operation)
+        }
     }
 }
