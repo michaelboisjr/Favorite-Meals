@@ -1,23 +1,25 @@
+//file name: UIViewControllerRepresntable
+
 import SwiftUI
 import CloudKit
 
 struct CloudShareView: UIViewControllerRepresentable {
     let share: CKShare
     let container: CKContainer
-
+    
     func makeUIViewController(context: Context) -> UICloudSharingController {
         let sharingController = UICloudSharingController(share: share, container: container)
-        sharingController.availablePermissions = [.allowPrivate, .allowReadWrite, .allowReadOnly]
+        sharingController.delegate = context.coordinator // 👈 Enforces live participant updates        sharingController.availablePermissions = [.allowPrivate, .allowReadWrite, .allowReadOnly]
         sharingController.delegate = context.coordinator
         return sharingController
     }
-
+    
     func updateUIViewController(_ uiViewController: UICloudSharingController, context: Context) {}
-
+    
     func makeCoordinator() -> Coordinator {
         Coordinator()
     }
-
+    
     class Coordinator: NSObject, UICloudSharingControllerDelegate {
         
         // MARK: - Required Protocol Methods

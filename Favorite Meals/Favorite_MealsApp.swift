@@ -1,9 +1,4 @@
-//
-//  Favorite_MealsApp.swift
-//  Favorite Meals
-//
-//  Created by Michael Bois on 6/3/26.
-//
+// File Name: Favorite_MealsApp.swift
 
 import SwiftUI
 import SwiftData
@@ -11,7 +6,7 @@ import CloudKit
 
 @main
 struct Favorite_MealsApp: App {
-    // Maintain a single container instance for the entire lifecycle
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     let sharedModelContainer: ModelContainer
     
     init() {
@@ -20,50 +15,60 @@ struct Favorite_MealsApp: App {
                 Meal.self,
                 Restaurant.self,
             ])
-            let modelConfiguration = ModelConfiguration(
+            
+            let containerIdentifier = "iCloud.FavoriteMealData"
+            let appGroupString = "group.MichaelBoisJrHome.Favorite-Meals"
+            
+            // Pre-build directory to bypass Sandbox errors
+            let fileManager = FileManager.default
+            if let groupURL = fileManager.containerURL(forSecurityApplicationGroupIdentifier: appGroupString) {
+                let appSupportURL = groupURL.appendingPathComponent("Library/Application Support", isDirectory: true)
+                if !fileManager.fileExists(atPath: appSupportURL.path) {
+                    try? fileManager.createDirectory(at: appSupportURL, withIntermediateDirectories: true, attributes: nil)
+                    print("Successfully pre-created secure App Group directories! 📂")
+                }
+            }
+            
+            let unifiedConfig = ModelConfiguration(
                 schema: schema,
                 isStoredInMemoryOnly: false,
-                cloudKitDatabase: .automatic
+                groupContainer: .identifier(appGroupString),
+                cloudKitDatabase: .private(containerIdentifier)
             )
             
-            // Initialize our unified container
-            let container = try ModelContainer(for: schema, configurations: [modelConfiguration])
+            let container = try ModelContainer(
+                for: schema,
+                configurations: [unifiedConfig]
+            )
             self.sharedModelContainer = container
-            
-            // Run the seed check immediately using this container
+            AppDelegate.sharedModelContainer = container
+
+            // 🎯 FIXED: Remove 'if let' and pass the non-optional URL directly
+            CloudKitShareManager.shared.initializeBridge(
+                with: unifiedConfig.url,
+                containerIdentifier: containerIdentifier
+            )
+
             seedDataIfNeeded(with: container)
         } catch {
             fatalError("Could not create ModelContainer: \(error)")
         }
     }
-    
+
     var body: some Scene {
         WindowGroup {
             DashboardView()
                 .background(Theme.Colors.background)
-                // FIX: Ripped out the old Core Data managedObjectContext environment injection
                 .onOpenURL { url in
-                    // Native SwiftData CloudKit Share Acceptance Flow
-                    let containerIdentifier = "iCloud.FavoriteMealData"
-                    let ckContainer = CKContainer(identifier: containerIdentifier)
-                    
-                    if let shareMetadata = url.cloudKitShareMetadata {
-                        let acceptOperation = CKAcceptSharesOperation(shareMetadatas: [shareMetadata])
-                        acceptOperation.acceptSharesResultBlock = { result in
-                            switch result {
-                            case .success:
-                                print("Successfully joined friend's shared meal zone!")
-                            case .failure(let error):
-                                print("Failed to accept share invitation: \(error)")
-                            }
-                        }
-                        ckContainer.add(acceptOperation)
-                    }
+                    print("🔗 App opened via secure system link: \(url.absoluteString)")
+                    NotificationCenter.default.post(
+                        name: NSNotification.Name("CloudKitShareAcceptanceSuccess"),
+                        object: url
+                    )
                 }
         }
-        .modelContainer(sharedModelContainer) // Inject the correct SwiftData container
+        .modelContainer(sharedModelContainer)
     }
-    
     private func seedDataIfNeeded(with container: ModelContainer) {
         let context = ModelContext(container)
         let descriptor = FetchDescriptor<Meal>()
@@ -101,10 +106,59 @@ struct Favorite_MealsApp: App {
     }
 }
 
-// Quick helper to safely unpack metadata out of deep link URLs
-extension URL {
-    var cloudKitShareMetadata: CKShare.Metadata? {
-        // Extracts standard system cryptographic sharing verification tokens from the link
-        return nil
+// MARK: - Core OS Lifecycle Handlers
+
+class AppDelegate: NSObject, UIApplicationDelegate {
+    static var sharedModelContainer: ModelContainer?
+    
+    func application(_ application: UIApplication, configurationForConnecting connectingSceneSession: UISceneSession, options: UIScene.ConnectionOptions) -> UISceneConfiguration {
+        let sceneConfig = UISceneConfiguration(name: nil, sessionRole: connectingSceneSession.role)
+        sceneConfig.delegateClass = SceneDelegate.self // Force iOS to route events to our custom handler
+        return sceneConfig
+    }
+}
+
+class SceneDelegate: NSObject, UIWindowSceneDelegate {
+    
+    // This catches the invite if the app was completely closed/killed in the background
+    func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
+        if let cloudMetadata = connectionOptions.cloudKitShareMetadata {
+            acceptCloudKitInvitation(metadata: cloudMetadata)
+        }
+    }
+    
+    // This catches the invite if the app was already sitting open in the background
+    func windowScene(_ windowScene: UIWindowScene, userDidAcceptCloudKitShareWith metadata: CKShare.Metadata) {
+        acceptCloudKitInvitation(metadata: metadata)
+    }
+    
+    private func acceptCloudKitInvitation(metadata: CKShare.Metadata) {
+        print("SceneDelegate intercepted secure iCloud link! Processing handshake... 🔐")
+        
+        let acceptOperation = CKAcceptSharesOperation(shareMetadatas: [metadata])
+        acceptOperation.qualityOfService = .userInitiated
+        
+        acceptOperation.acceptSharesResultBlock = { result in
+            switch result {
+            case .success:
+                print("Successfully joined the shared zone! Participant is now ACTIVE. 🎉")
+                print("Local main context forced-refreshed successfully.")
+
+                // 🚨 ADD THIS: Broadcast a custom notification to the SwiftUI view hierarchy
+                NotificationCenter.default.post(name: NSNotification.Name("CloudKitShareAcceptanceSuccess"), object: nil)
+                
+                // Tell SwiftData's main context on the main thread to immediately pull updates
+                DispatchQueue.main.async {
+                    guard let container = AppDelegate.sharedModelContainer else { return }
+                    try? container.mainContext.save()
+                    print("Local main context forced-refreshed successfully.")
+                }
+            case .failure(let error):
+                print("CloudKit server rejected the invitation handshake: \(error.localizedDescription)")
+            }
+        }
+        
+        // Execute the operation against Apple's servers
+        CKContainer(identifier: metadata.containerIdentifier).add(acceptOperation)
     }
 }

@@ -1,5 +1,8 @@
+//file name: DashboardCards
+
 import SwiftUI
 import SwiftData
+import Combine
 
 // MARK: - Star Rating View
 struct StarRatingView: View {
@@ -108,8 +111,9 @@ struct MealCardView: View {
 
 // MARK: - Grid Layout for Sorted Meals
 struct MealListView: View {
-    @Environment(\.modelContext) private var modelContext // 👈 Add context
+    @Environment(\.modelContext) private var modelContext
     @Query private var meals: [Meal]
+    @State private var refreshID = UUID()
     
     let columns = [GridItem(.flexible()), GridItem(.flexible())]
     
@@ -118,42 +122,84 @@ struct MealListView: View {
     }
     
     var body: some View {
-        LazyVGrid(columns: columns, spacing: 16) {
-            ForEach(meals) { meal in
-                NavigationLink(destination: MealDetailView(meal: meal)) {
-                    MealCardView(meal: meal)
-                }
-                .buttonStyle(ScalableButtonStyle())
-                // ⬇️ ADD THE CONTEXT MENU HERE
-                .contextMenu {
-                    Button(role: .destructive) {
-                        deleteMeal(meal)
-                    } label: {
-                        Label("Delete Meal", systemImage: "trash")
+        ScrollView { // Added wrapper to cleanly hold modifiers outside the loop
+            LazyVGrid(columns: columns, spacing: 16) {
+                ForEach(meals) { meal in
+                    NavigationLink(destination: MealDetailView(meal: meal)) {
+                        MealCardView(meal: meal)
                     }
+                    .buttonStyle(ScalableButtonStyle())
+                    .contextMenu {
+                        // 🎯 NEW: Native Share Action Sheet Trigger
+                        Button {
+                            triggerShareSheet(for: meal)
+                        } label: {
+                            Label("Share Meal", systemImage: "person.badge.plus")
+                        }
+                        
+                        Divider()
+                        
+                        Button(role: .destructive) {
+                            deleteMeal(meal)
+                        } label: {
+                            Label("Delete Meal", systemImage: "trash")
+                        }
+                    }
+                    .id(refreshID)
                 }
             }
+            .padding(.horizontal)
+            // 🛠️ PERFORMANCE FIX: Modifiers moved out of the ForEach loop to prevent rapid-fire multiplication
+            .navigationTitle("Favorite Meals")
+            .onReceive(
+                NotificationCenter.default
+                    .publisher(for: NSNotification.Name("NSPersistentStoreRemoteChangeNotification"))
+                    .debounce(for: .seconds(0.5), scheduler: RunLoop.main)
+            ) { _ in
+                refreshUILayout()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("CloudKitShareAcceptanceSuccess"))) { _ in
+                print("🏁 UI caught successful handshake notification! Forcing final data reveal...")
+                refreshUILayout()
+            }
         }
-        .padding(.horizontal)
     }
     
-    // ⬇️ ADD THE DELETION LOGIC
-    private func deleteMeal(_ meal: Meal) {
-        // Capture the restaurant reference before deleting the meal
-        let associatedRestaurant = meal.restaurant
+    /// Finds the window view controller and prompts the Core Data bridge to present the system share sheet
+    private func triggerShareSheet(for meal: Meal) {
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let rootVC = windowScene.windows.first?.rootViewController else {
+            print("⚠️ Could not locate root UIViewController hierarchy.")
+            return
+        }
         
-        // Remove the meal from disk storage
+        // ✅ FIXED: Using 'meal.uuid' instead of the system 'id'
+        CloudKitShareManager.shared.presentShareSheet(
+            for: meal.uuid,
+            entityName: "Meal",
+            from: rootVC
+        )
+    }
+    
+    private func deleteMeal(_ meal: Meal) {
+        let associatedRestaurant = meal.restaurant
         modelContext.delete(meal)
         
-        // Optional Cleanup: If the restaurant now has zero meals left, delete it too
         if let restaurant = associatedRestaurant {
-            // Check if this was the last meal for this restaurant
             if (restaurant.meals?.count ?? 0) <= 1 {
                 modelContext.delete(restaurant)
             }
         }
-        
-        // Save the changes explicitly (or let SwiftData auto-save handle it)
         try? modelContext.save()
+    }
+    
+    private func refreshUILayout() {
+        Task { @MainActor in
+            print("🔄 Thread-safe UI refresh initialized...")
+            modelContext.container.mainContext.processPendingChanges()
+            withAnimation(.easeInOut) {
+                refreshID = UUID()
+            }
+        }
     }
 }
